@@ -1,0 +1,63 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+
+enum Role{
+  USER
+  ADMIN
+}
+
+enum AuctionStatus {
+  ACTIVE
+  SOLD
+  EXPIRED
+}
+
+
+
+model Auction {
+  id           String   @id @default(uuid())
+  title        String
+  description  String?
+  startPrice   Float
+  currentPrice Float
+  endTime      DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  status       AuctionStatus @default(ACTIVE)
+  bids         Bid[]
+  sellerId     String
+  seller       User     @relation("AdminAuctions", fields: [sellerId], references: [id])
+}
+
+model Bid {
+  id        String   @id @default(uuid())
+  amount    Float
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id])
+  createdAt DateTime @default(now())
+  userId    String
+  User      User @relation(fields: [userId], references: [id])
+}
+
+model User{
+  id        String @id @default(uuid())
+  username  String @unique
+  password  String
+  phone_number  String? @unique
+  email     String @unique 
+  bids      Bid[]
+  role      Role @default(USER)
+  auctions Auction[] @relation("AdminAuctions")
+}

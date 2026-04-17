@@ -1,0 +1,30 @@
+node_modules
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Environment Variables (CRITICAL for Supabase/Banking)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Prisma
+/packages/db/generated/
+/packages/db/migrations/
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
