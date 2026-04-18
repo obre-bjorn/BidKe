@@ -5,24 +5,24 @@ export class AuctionService {
 
 
 
-    static async createAuction(data:{title:string, description:string, startingPrice:number, endTime:Date, imageUrl?:string}){
+    // static async createAuction(data:{title:string, description:string, startingPrice:number, endTime:Date, imageUrl?:string}){
 
-        const auction = await db.auction.create({
-            data: {
-                title: data.title,
-                description: data.description,
-                startPrice: data.startingPrice,
-                currentPrice: data.startingPrice,
-                endTime: data.endTime,
-                imageUrl: data.imageUrl
-            }
-        })
+    //     const auction = await db.auction.create({
+    //         data: {
+    //             title: data.title,
+    //             description: data.description,
+    //             startPrice: data.startingPrice,
+    //             currentPrice: data.startingPrice,
+    //             endTime: data.endTime,
+    //             // imageUrl: data.imageUrl
+    //         }
+    //     })
 
-        await redisClient.set(`auction:${auction.id}:currentPrice`, auction.currentPrice.toString())
+    //     await redisClient.set(`auction:${auction.id}:currentPrice`, auction.currentPrice.toString())
         
-        return auction      
+    //     return auction      
 
-    }
+    // }
 
     static async getAllAuctions (){
 
