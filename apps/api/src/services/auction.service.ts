@@ -5,24 +5,52 @@ export class AuctionService {
 
 
 
-    // static async createAuction(data:{title:string, description:string, startingPrice:number, endTime:Date, imageUrl?:string}){
+    static async createAuctionWithImages(data:{
+            title:string, 
+            description:string, 
+            startingPrice:number, 
+            endTime:Date,     
+        }, 
+        media: {url:string, publicId:string, type:string}[],
+        adminId:string){
 
-    //     const auction = await db.auction.create({
-    //         data: {
-    //             title: data.title,
-    //             description: data.description,
-    //             startPrice: data.startingPrice,
-    //             currentPrice: data.startingPrice,
-    //             endTime: data.endTime,
-    //             // imageUrl: data.imageUrl
-    //         }
-    //     })
+        return db.$transaction( async (tx) => {
 
-    //     await redisClient.set(`auction:${auction.id}:currentPrice`, auction.currentPrice.toString())
-        
-    //     return auction      
 
-    // }
+            const auction = await tx.auction.create({
+                data:{
+                    title:data.title,
+                    description: data.description,
+                    startPrice: data.startingPrice,
+                    currentPrice:data.startingPrice,
+                    endTime: new Date(data.endTime),
+                    sellerId: adminId,
+                    status: 'ACTIVE'
+                }
+            })
+
+
+            if (media.length > 0){
+
+                await tx.auctionMedia.createMany({
+                    data:media.map((img: {url:string, publicId: string}) =>({
+                        url: img.url,
+                        publicId: img.publicId,
+                        auctionId: auction.id
+
+                    }))
+                })
+            }
+
+
+            return await tx.auction.findUnique({
+                where: { id: auction.id },
+                include: { media: true }
+            });
+
+        })
+
+    }
 
     static async getAllAuctions (){
 

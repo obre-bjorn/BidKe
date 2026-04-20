@@ -37,5 +37,23 @@ export async function getAuctionById (req:Request, res:Response) {
     }
 }
 
+
+
+export async function createAuction(req:Request, res:Response){
+
+    try {
+        
+        const adminId =  (req as any).user.id
+
+        const result = AuctionService.createAuctionWithImages(req.body, adminId)
+
+
+
+    } catch (error) {
+        
+    }
+
+
+}
  
 
