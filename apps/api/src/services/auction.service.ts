@@ -5,13 +5,13 @@ export class AuctionService {
 
 
 
-    static async createAuctionWithImages(data:{
+    static async createAuction(data:{
             title:string, 
             description:string, 
             startingPrice:number, 
             endTime:Date,     
+            media: {url:string, publicId:string, type:string}[],
         }, 
-        media: {url:string, publicId:string, type:string}[],
         adminId:string){
 
         return db.$transaction( async (tx) => {
@@ -30,10 +30,10 @@ export class AuctionService {
             })
 
 
-            if (media.length > 0){
+            if (data.media.length > 0){
 
                 await tx.auctionMedia.createMany({
-                    data:media.map((img: {url:string, publicId: string}) =>({
+                    data:data.media.map((img: {url:string, publicId: string}) =>({
                         url: img.url,
                         publicId: img.publicId,
                         auctionId: auction.id
