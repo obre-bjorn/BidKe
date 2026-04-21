@@ -1,5 +1,6 @@
 import { type Request,type Response } from "express";
 import { AuctionService } from "../services/auction.service.js";
+import { MediaService } from "../services/media.service.js";
 import sharp from "sharp";
 import cloudinary from "../lib/cloudinary.js";
 
@@ -55,52 +56,9 @@ export async function createAuction(req:Request, res:Response){
         if(!files || files.length === 0 ) return res.status(400).json({error: "Media requried"})
         
         
-        const uploadResults = await Promise.all(files.map(async (file) : Promise<UploadedMedia> => {
-            
-            let category : 'IMAGE' | 'VIDEO' | 'DOC' = 'IMAGE'
-
-            if(file.mimetype.startsWith('video/')){
-
-                category = 'VIDEO'
-            }else if(file.mimetype.startsWith('application/pdf')){
-                category = 'DOC'
-            }
-
-            let buffer = file.buffer
-
-            if(category === 'IMAGE'){
-                buffer = await sharp(file.buffer)
-                    .resize(1200,1200, {fit: 'inside', withoutEnlargement: true})
-                    .jpeg({quality: 80, mozjpeg : true})
-                    .toBuffer()
-            }
-
-            return new Promise( (resolve, reject) => {
-
-                const isVideo = category === 'VIDEO'
-
-                const uploadStream = cloudinary.uploader.upload_stream(
-                    {
-                        folder:'auctions',
-                        resource_type: isVideo ? 'video' : 'auto',
-                        transformation: isVideo ? [{ quality: "auto", fetch_format: "mp4" }] : undefined
-                    },(err,res) => {
-
-                        if(err) return reject(err)
-                        
-                        resolve({
-                            url:res?.secure_url || '',
-                            publicId: res?.public_id || '',
-                            type: category
-                        })
-
-                    }
-                )
-
-                uploadStream.end(buffer)
-            })
-
-        }))
+        const uploadResults = await Promise.all(
+            files.map(async file => MediaService.processAndUploadMedia(file))
+        )
 
         const auctionData = {
             title: req.body.title,
@@ -114,7 +72,9 @@ export async function createAuction(req:Request, res:Response){
         const result = await AuctionService.createAuction(auctionData, adminId)
 
 
-        res.status(200).json({message:"Auction created Successully", data: result})
+        res.status(201).json({message:"Auction created Successully", data: result})
+
+
     } catch (error: any) {
 
         console.log("CRITICAL ERROR in auction creation: ",error)
