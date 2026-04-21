@@ -87,5 +87,40 @@ export async function createAuction(req:Request, res:Response){
 
 
 }
+
+
+export async function deleteAuction(req:Request, res:Response){
+
+    try {
+
+        const id = req.params.id as string;
+        const adminId = (req as any).user.id
+
+        const deletedMedia = await AuctionService.deleteAuction(id, adminId);
+
+        const imageIds = deletedMedia.filter(m => m.mediaType === 'IMAGE').map(m => m.publicId);
+        const videoIds = deletedMedia.filter(m => m.mediaType === 'VIDEO').map(m => m.publicId);
+        const docIds = deletedMedia.filter(m => m.mediaType === 'DOC').map(m => m.publicId);
+
+        Promise.all([
+            MediaService.deleteMedia(imageIds, 'IMAGE'),
+            MediaService.deleteMedia(videoIds, 'VIDEO'),
+            MediaService.deleteMedia(docIds, 'DOC')
+        ]);
+
+
+        res.status(200).json({ message: "Auction and associated media deleted successfully." })
+
+    } catch (error:any) {
+
+
+        res.status(error.message === "Unauthorized" ? 403 : 500).json({ 
+            error: error.message || "Failed to delete auction" 
+        });
+    }
+
+
+
+}
  
 

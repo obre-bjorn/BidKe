@@ -69,6 +69,31 @@ export class AuctionService {
     }
 
 
+    static async deleteAuction(auctionId:string, adminId:string){
+
+        return await db.$transaction(async (tx) => {
+
+            const auction = await tx.auction.findUnique({
+                where: { id: auctionId },
+                include: { media: true }
+            });
+
+
+            if (!auction) throw new Error("Auction not found");
+            if (auction.sellerId !== adminId) throw new Error("Unauthorized");
+
+            await tx.auction.delete({
+                where: { id: auctionId }
+            });
+
+
+            return auction.media;
+
+        })
+
+
+    }
+
     static async getAuctionById (auctionId:string) {
         
         const result = await db.auction.findUnique({

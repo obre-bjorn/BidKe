@@ -54,4 +54,22 @@ export class MediaService {
         })
     }
 
+
+    static async deleteMedia(publicIds: string[], type: 'IMAGE' | 'VIDEO' | 'DOC') {
+    
+        if(publicIds.length === 0) return;
+
+        const resourceType = type === 'VIDEO' ? 'video' : 'image'
+
+        try {
+            
+            await cloudinary.api.delete_resources(publicIds, {
+                resource_type: resourceType
+            });
+
+        } catch (error) {
+            console.error(`Cloudinary deletion failed for ${type}:`, error);
+        }
+        
+    }
 }
