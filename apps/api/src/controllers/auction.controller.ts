@@ -64,7 +64,7 @@ export async function createAuction(req:Request, res:Response){
             title: req.body.title,
             description: req.body.description,
             startingPrice: parseFloat(req.body.startPrice),
-            endTime: new Date(req.body.endtime),
+            endTime: new Date(req.body.endTime),
             media: uploadResults 
         }
 

@@ -25,6 +25,13 @@ enum AuctionStatus {
 }
 
 
+enum Media {
+  IMAGE
+  VIDEO
+  DOC
+}
+
+
 
 model Auction {
   id           String   @id @default(uuid())
@@ -34,12 +41,25 @@ model Auction {
   currentPrice Float
   endTime      DateTime
   createdAt    DateTime @default(now())
+  media       AuctionMedia[]
   updatedAt    DateTime @updatedAt
   status       AuctionStatus @default(ACTIVE)
   bids         Bid[]
   sellerId     String
   seller       User     @relation("AdminAuctions", fields: [sellerId], references: [id])
 }
+
+
+model AuctionMedia{
+  id String @id @default(uuid())
+  url String
+  publicId String
+  mediaType Media @default(IMAGE)
+  auctionId String
+  auction Auction @relation(fields: [auctionId], references: [id], onDelete: Cascade)
+}
+
+
 
 model Bid {
   id        String   @id @default(uuid())

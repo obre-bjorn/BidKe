@@ -34,8 +34,9 @@ export class AuctionService {
 
                 await tx.auctionMedia.createMany({
                     data:data.media.map((m :any) =>({
-                        ...m,
-                        type: m.type,
+                        url: m.url,
+                        publicId: m.publicId,
+                        mediaType: m.type as any,
                         auctionId: auction.id
 
                     }))
