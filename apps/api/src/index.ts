@@ -4,7 +4,6 @@ import cors from 'cors';
 import express, { type Request, type Response } from 'express';
 import { type AuctionItem, APP_NAME } from '@auction/shared';
 import { registerAuctionHandlers } from './handlers/auction.handler.js';
-import { startAuctionTimer } from './workers/timer.worker.js';
 import { verifyToken } from './lib/auth.js';
 
 // Route imports
@@ -15,7 +14,7 @@ import authRouters from './routes/auth.routes.js'
 // Server Setup
 const app = express();
 const httpServer = createServer(app)
-const io = new Server(httpServer, {
+export const io = new Server(httpServer, {
     cors : {
         origin : "*",
     }
@@ -74,7 +73,7 @@ io.on('connection', (socket) => {
 
 
 
-startAuctionTimer(io)
+import './services/queue.service.js'; // Ensure the queue worker is initialized
 
 const PORT = 4000;
 httpServer.listen(PORT, () => {
