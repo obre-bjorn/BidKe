@@ -1,5 +1,6 @@
 import { type Server,type Socket } from "socket.io";
 import { AuctionService } from "../services/auction.service.js";
+import { QueueService } from "../services/queue.service.js";
 import redisClient from "../lib/redis.js";
 
 
@@ -22,41 +23,34 @@ export const registerAuctionHandlers = (io: Server, socket: Socket) => {
     });
 
 
-    socket.on('bid:submit',async (payload: {amount:number, auctionId:string}) =>{
+    socket.on('bid:submit', async (payload: { amount: number, auctionId: string }) => {
+    try {
+        const userId = (socket as any).user.id;
+        const { amount, auctionId } = payload;
 
+        // 1. Database Phase (Fast & Atomic)
+        const result = await AuctionService.placeBid(auctionId, amount, userId);
 
-        try {
-
-            const userId = (socket as any).user.id; // Assuming user info is attached to socket in auth middleware
-            
-            const { amount, auctionId} = payload;
-            
-            const currentLivePrice = await AuctionService.getLiveAuctionPrice(auctionId);
-
-            if (amount <= currentLivePrice) {
-                socket.emit('bid:error', { errorMessage: "Bid must be higher than current price" });
-                return;
-            }
-
-            const result = await AuctionService.placeBid(auctionId, amount, userId);
-
-            await redisClient.set(`auction:${auctionId}:currentPrice`, result.updatedAuction.currentPrice.toString());
-
-            console.log(`Bidding on room: ${auctionId}`);
-            const rooms = io.sockets.adapter.rooms.get(auctionId);
-            console.log(`Users currently in this room: ${rooms ? rooms.size : 0}`);
-            
-            io.to(auctionId).emit('bid:update', {
-                auctionId,
-                newPrice: result.updatedAuction.currentPrice,
-                bidder: userId
-            });
-
-
-        } catch (error) {
-            socket.emit('bid:error', { errorMessage: "Failed to place bid. Please try again." });
+        // 2. Queue Phase (External Network Call - Safe here outside DB lock)
+        if (result.isExtended) {
+            await QueueService.scheduleAuctionJobs(auctionId, result.updatedAuction.endTime);
+            console.log(`🔥 GAME RUSH: Worker updated for ${auctionId}`);
         }
 
+        // 3. Cache Phase
+        await redisClient.set(`auction:${auctionId}:currentPrice`, result.updatedAuction.currentPrice.toString());
 
-    }) 
+        // 4. Broadcast Phase
+        io.to(auctionId).emit('bid:update', {
+            auctionId,
+            newPrice: result.updatedAuction.currentPrice,
+            bidder: userId,
+            endTime: result.updatedAuction.endTime // Send the new time to the frontend!
+        });
+
+    } catch (error: any) {
+        console.error("Bid Submission Error:", error.message);
+        socket.emit('bid:error', { errorMessage: error.message || "Failed to place bid." });
+    }
+});
 }

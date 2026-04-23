@@ -3,6 +3,7 @@ import { AuctionService } from "../services/auction.service.js";
 import { MediaService } from "../services/media.service.js";
 import sharp from "sharp";
 import cloudinary from "../lib/cloudinary.js";
+import { QueueService } from "../services/queue.service.js";
 
 interface UploadedMedia {
     url: string;
@@ -71,6 +72,10 @@ export async function createAuction(req:Request, res:Response){
 
         const result = await AuctionService.createAuction(auctionData, adminId)
 
+        if(result){
+
+            await QueueService.scheduleAuctionJobs(result.id, result.endTime)
+        }
 
         res.status(201).json({message:"Auction created Successully", data: result})
 

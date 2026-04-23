@@ -10,6 +10,8 @@ import { verifyToken } from './lib/auth.js';
 import auctionRouters from './routes/auction.routes.js'
 import authRouters from './routes/auth.routes.js'
 
+import { initializeWorker } from './services/queue.service.js';
+
 
 // Server Setup
 const app = express();
@@ -48,7 +50,8 @@ app.use('/auth',authRouters)
 
 io.use((socket, next) => {
     // Socket.io provides 'auth' field specifically for this
-    const token = socket.handshake.auth.token;
+    
+    const token: string = socket.handshake.headers.token;
 
     if (!token) {
         return next(new Error("Authentication error: Token missing"));
@@ -73,10 +76,12 @@ io.on('connection', (socket) => {
 
 
 
-import './services/queue.service.js'; // Ensure the queue worker is initialized
+// Ensure the queue worker is initialized
 
 const PORT = 4000;
 httpServer.listen(PORT, () => {
+
+    initializeWorker(io)
   console.log(`✅ [${APP_NAME}] Running on Node 25`);
   console.log(`🚀 API & Sockets: http://localhost:${PORT}`);
 });

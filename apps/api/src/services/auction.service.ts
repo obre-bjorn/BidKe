@@ -1,5 +1,6 @@
 import redisClient from '../lib/redis.js';
 import { db } from "@auction/db";
+import { QueueService } from './queue.service.js';
 
 export class AuctionService {
 
@@ -14,42 +15,28 @@ export class AuctionService {
         }, 
         adminId:string){
 
-        return db.$transaction( async (tx) => {
-
-
-            const auction = await tx.auction.create({
-                data:{
-                    title:data.title,
-                    description: data.description,
-                    startPrice: data.startingPrice,
-                    currentPrice:data.startingPrice,
-                    endTime: new Date(data.endTime),
-                    sellerId: adminId,
-                    status: 'ACTIVE'
-                }
-            })
-
-
-            if (data.media.length > 0){
-
-                await tx.auctionMedia.createMany({
-                    data:data.media.map((m :any) =>({
-                        url: m.url,
-                        publicId: m.publicId,
-                        mediaType: m.type as any,
-                        auctionId: auction.id
-
-                    }))
-                })
+        return await db.auction.create({
+        data: {
+            title: data.title,
+            description: data.description,
+            startPrice: data.startingPrice,
+            currentPrice: data.startingPrice,
+            endTime: new Date(data.endTime),
+            sellerId: adminId,
+            status: 'ACTIVE',
+            // This replaces createMany and the transaction wrapper
+            media: {
+                create: data.media.map((m: any) => ({
+                    url: m.url,
+                    publicId: m.publicId,
+                    mediaType: m.type as any,
+                }))
             }
-
-
-            return await tx.auction.findUnique({
-                where: { id: auction.id },
-                include: { media: true }
-            });
-
-        })
+        },
+        include: {
+            media: true // Returns the media in the response immediately
+        }
+    });
 
     }
 
@@ -134,44 +121,42 @@ export class AuctionService {
 
 
 
-    static async placeBid (auctionId:string, amount: number, userId: string) {
+    static async placeBid(auctionId: string, amount: number, userId: string) {
+    return await db.$transaction(async (tx) => {
+        const auction = await tx.auction.findUnique({
+            where: { id: auctionId }
+        });
 
+        if (!auction) throw new Error("Auction not found");
+        if (auction.status !== "ACTIVE") throw new Error("Auction is no longer active");
+        if (amount <= auction.currentPrice) throw new Error("Bid must be higher than current price");
 
-        return await db.$transaction(async (tx) => {
+        const RUSH_THRESHOLD = 60 * 1000;
+        const EXTENSION_TIME = 60 * 1000;
+        const now = Date.now();
+        const timeRemaining = auction.endTime.getTime() - now;
 
-            const auction = await tx.auction.findUnique({
-                where: {id : auctionId}
-            })
+        let finalEndTime = auction.endTime;
+        let isExtended = false;
 
-            if (!auction) throw new Error("Auction not found!")
+        // Logic check: only set flag if we are in the "Rush" window
+        if (timeRemaining <= RUSH_THRESHOLD) {
+            finalEndTime = new Date(now + EXTENSION_TIME);
+            isExtended = true;
+        }
 
-            
-            if (amount <= auction.currentPrice){
-                throw new Error("Bid must be higher than the current price")
-            }
+        await tx.bid.create({ data: { amount, userId, auctionId } });
+        
+        const updatedAuction = await tx.auction.update({
+            where: { id: auctionId },
+            data: { currentPrice: amount, endTime: finalEndTime }
+        });
 
-            await tx.bid.create({
-                data : {
-                    amount,
-                    auctionId,
-                    userId
-                }
-            })
-
-            const updatedAuction = await tx.auction.update({
-                where: {id : auctionId},
-                data: {
-                    currentPrice: amount
-                }
-            })
-
-
-            return {updatedAuction}
-
-
-        })
-
-    }
+        return { updatedAuction, isExtended };
+    }, {
+        timeout: 10000 // Prevents the P2028 error
+    });
+}
 
     static async closeAuction(auctionId:string){{
 
