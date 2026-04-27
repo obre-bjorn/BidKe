@@ -122,41 +122,50 @@ export class AuctionService {
 
 
     static async placeBid(auctionId: string, amount: number, userId: string) {
-    return await db.$transaction(async (tx) => {
-        const auction = await tx.auction.findUnique({
-            where: { id: auctionId }
-        });
-
-        if (!auction) throw new Error("Auction not found");
-        if (auction.status !== "ACTIVE") throw new Error("Auction is no longer active");
-        if (amount <= auction.currentPrice) throw new Error("Bid must be higher than current price");
-
-        const RUSH_THRESHOLD = 60 * 1000;
-        const EXTENSION_TIME = 60 * 1000;
-        const now = Date.now();
-        const timeRemaining = auction.endTime.getTime() - now;
-
-        let finalEndTime = auction.endTime;
-        let isExtended = false;
-
-        // Logic check: only set flag if we are in the "Rush" window
-        if (timeRemaining <= RUSH_THRESHOLD) {
-            finalEndTime = new Date(now + EXTENSION_TIME);
-            isExtended = true;
-        }
-
-        await tx.bid.create({ data: { amount, userId, auctionId } });
-        
-        const updatedAuction = await tx.auction.update({
+        return await db.$transaction(async (tx) => {
+            const auction = await tx.auction.findUnique({ 
             where: { id: auctionId },
-            data: { currentPrice: amount, endTime: finalEndTime }
+            // Highest bidder (for notification)
+            include: { 
+                bids: {
+                    orderBy: { amount: 'desc' },
+                    take: 1
+                }
+            }
         });
 
-        return { updatedAuction, isExtended };
-    }, {
-        timeout: 10000 // Prevents the P2028 error
-    });
-}
+            if (!auction) throw new Error("Auction not found");
+            if (auction.status !== "ACTIVE") throw new Error("Auction is no longer active");
+            if (amount <= auction.currentPrice) throw new Error("Bid must be higher than current price");
+
+            // Capture this BEFORE updating the auction
+            const previousBidderId = auction.bids[0]?.userId || null; 
+
+            const RUSH_THRESHOLD = 60 * 1000;
+            const now = Date.now();
+            const timeRemaining = auction.endTime.getTime() - now;
+
+            let finalEndTime = auction.endTime;
+            let isExtended = false;
+
+            if (timeRemaining <= RUSH_THRESHOLD) {
+                finalEndTime = new Date(now + 60000); 
+                isExtended = true;
+            }
+
+            await tx.bid.create({ data: { amount, userId, auctionId } });
+            
+            const updatedAuction = await tx.auction.update({
+                where: { id: auctionId },
+                data: { 
+                    currentPrice: amount, 
+                    endTime: finalEndTime,
+                }
+            });
+
+            return { updatedAuction, isExtended, previousBidderId };
+        }, { timeout: 10000 });
+    }
 
     static async closeAuction(auctionId:string){{
 

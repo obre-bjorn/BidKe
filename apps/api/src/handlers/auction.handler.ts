@@ -29,23 +29,23 @@ export const registerAuctionHandlers = (io: Server, socket: Socket) => {
         const { amount, auctionId } = payload;
 
         // 1. Database Phase (Fast & Atomic)
-        const result = await AuctionService.placeBid(auctionId, amount, userId);
+        const {updatedAuction, isExtended, previousBidderId} = await AuctionService.placeBid(auctionId, amount, userId);
 
         // 2. Queue Phase (External Network Call - Safe here outside DB lock)
-        if (result.isExtended) {
-            await QueueService.scheduleAuctionJobs(auctionId, result.updatedAuction.endTime);
+        if (isExtended) {
+            await QueueService.scheduleAuctionJobs(auctionId, updatedAuction.endTime);
             console.log(`🔥 GAME RUSH: Worker updated for ${auctionId}`);
         }
 
         // 3. Cache Phase
-        await redisClient.set(`auction:${auctionId}:currentPrice`, result.updatedAuction.currentPrice.toString());
+        await redisClient.set(`auction:${auctionId}:currentPrice`, updatedAuction.currentPrice.toString());
 
         // 4. Broadcast Phase
         io.to(auctionId).emit('bid:update', {
             auctionId,
-            newPrice: result.updatedAuction.currentPrice,
+            newPrice: updatedAuction.currentPrice,
             bidder: userId,
-            endTime: result.updatedAuction.endTime // Send the new time to the frontend!
+            endTime: updatedAuction.endTime // Send the new time to the frontend!
         });
 
     } catch (error: any) {

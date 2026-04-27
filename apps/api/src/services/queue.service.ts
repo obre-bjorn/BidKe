@@ -11,6 +11,10 @@ const connectionOptions = {
     connection: {
         url: REDIS_URL,
         tls: REDIS_URL.startsWith('rediss://') ? {} : undefined,
+        maxRetriesPerRequest: null,
+        retryStrategy(times: number) {
+            return Math.min(times * 50, 2000);
+        },
     },
     defaultJobOptions: {
         removeOnComplete: true,
