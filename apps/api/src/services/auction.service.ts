@@ -2,6 +2,8 @@ import redisClient from '../lib/redis.js';
 import { db } from "@auction/db";
 import { QueueService } from './queue.service.js';
 
+
+
 export class AuctionService {
 
 
@@ -123,23 +125,28 @@ export class AuctionService {
 
     static async placeBid(auctionId: string, amount: number, userId: string) {
         return await db.$transaction(async (tx) => {
-            const auction = await tx.auction.findUnique({ 
-            where: { id: auctionId },
-            // Highest bidder (for notification)
-            include: { 
-                bids: {
-                    orderBy: { amount: 'desc' },
-                    take: 1
-                }
-            }
-        });
+
+
+            console.log(auctionId)
+            const [auction] = await tx.$queryRaw<any[]>`
+                            SELECT a.*, 
+                                    (SELECT "userId" FROM "Bid" 
+                                    WHERE "auctionId" = a.id 
+                                    ORDER BY amount DESC 
+                                    LIMIT 1) as "topBidderId"
+                            FROM "Auction" a
+                            WHERE a.id = ${auctionId}
+                            FOR UPDATE
+                            `
+
+            console.log(auction)
 
             if (!auction) throw new Error("Auction not found");
             if (auction.status !== "ACTIVE") throw new Error("Auction is no longer active");
             if (amount <= auction.currentPrice) throw new Error("Bid must be higher than current price");
 
             // Capture this BEFORE updating the auction
-            const previousBidderId = auction.bids[0]?.userId || null; 
+            const previousBidderId = auction.topBidderId || null; 
 
             const RUSH_THRESHOLD = 60 * 1000;
             const now = Date.now();
@@ -176,8 +183,10 @@ export class AuctionService {
                 include: {
                     bids: {
                         orderBy: { amount: 'desc' },
-                        take: 1
-                    }
+                        take: 1,
+                        include:{User : true}
+                    },
+                    seller:true
                 }
             })
 
@@ -201,8 +210,10 @@ export class AuctionService {
 
 
             return {
-                updatedAuction,
-                winner: winningBid
+                auction: updatedAuction,
+                winner: winningBid? auction.bids[0].User : null,
+                seller: auction.seller,
+                finalPrice: winningBid?.amount || null
             }
 
         })

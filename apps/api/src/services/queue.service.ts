@@ -63,27 +63,53 @@ export const initializeWorker = (io: any) => {
         if (job.name === "close-auction") {
             try {
                 const result = await AuctionService.closeAuction(auctionId);
+
+
+
+                if(result && result.auction.status === 'SOLD' && result.winner && result.seller) {
+
+                    io.to(`user:${result.winner.id}`).emit('notification', {
+                        type: 'AUCTION_WON',
+                        message: `Congratulations! You won the auction for ${result.auction.title}!`
+                    });
+
+                    // Notify the Seller
+                    io.to(`user:${result.seller.id}`).emit('notification', {
+                        type: 'AUCTION_SOLD',
+                        message: `Your item ${result.auction.title} was sold for ${result.finalPrice}!`
+                    });
+
+                }
                 
                 io.to(auctionId).emit('auction:ended', {
                     auctionId,
-                    winner: result.winner?.userId || null,
-                    finalPrice: result.updatedAuction.currentPrice,
-                    status: result.updatedAuction.status
+                    winner: result.winner || null,
+                    finalPrice: result.auction.currentPrice,
+                    status: result.auction.status
                 });
         
                 console.log(`✅ [Upstash-Worker] Auction ${auctionId} finalized.`);
+
             } catch (err) {
+
                 console.error(`❌ [Worker Error] Failed to close auction ${auctionId}:`, err);
+
             }
         }
 
         if (job.name === "auction-reminder") {
+            
             console.log(`🔔 [REMINDER] Auction ${auctionId} ends in 15 minutes!`);
+
             io.to(auctionId).emit('notification', {
+
                 type: 'URGENT',
                 message: "This auction is ending in 15 minutes! Get your bids in."
+
             });
         }
+
+
     }, connectionOptions);
 
     worker.on('ready', () => console.log("🚀 [Upstash-Worker] Connected and waiting..."));

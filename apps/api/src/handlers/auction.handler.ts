@@ -28,9 +28,12 @@ export const registerAuctionHandlers = (io: Server, socket: Socket) => {
         const userId = (socket as any).user.id;
         const { amount, auctionId } = payload;
 
+        
+
         // 1. Database Phase (Fast & Atomic)
         const {updatedAuction, isExtended, previousBidderId} = await AuctionService.placeBid(auctionId, amount, userId);
-
+        
+        
         // 2. Queue Phase (External Network Call - Safe here outside DB lock)
         if (isExtended) {
             await QueueService.scheduleAuctionJobs(auctionId, updatedAuction.endTime);
@@ -38,7 +41,7 @@ export const registerAuctionHandlers = (io: Server, socket: Socket) => {
         }
 
         // 3. Cache Phase
-        await redisClient.set(`auction:${auctionId}:currentPrice`, updatedAuction.currentPrice.toString());
+        await redisClient.set(`auction:${auctionId}:currentPrice`, updatedAuction.currentPrice.toString()).catch(err => console.warn('Cache update failed (non-critical):', err.message));;
 
         // 4. Broadcast Phase
         io.to(auctionId).emit('bid:update', {
@@ -47,6 +50,13 @@ export const registerAuctionHandlers = (io: Server, socket: Socket) => {
             bidder: userId,
             endTime: updatedAuction.endTime // Send the new time to the frontend!
         });
+
+        if (previousBidderId && previousBidderId !== userId) {
+            io.to(`user:${previousBidderId}`).emit('notification', {
+                type: 'OUTBID',
+                message: `You've been outbid on auction ${auctionId}! New price: ${updatedAuction.currentPrice}`,
+        });
+}
 
     } catch (error: any) {
         console.error("Bid Submission Error:", error.message);

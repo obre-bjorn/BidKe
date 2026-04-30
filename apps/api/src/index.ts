@@ -69,7 +69,18 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
 
+    const userId = (socket as any).user?.id; 
+    if (userId) {
+        // 2. Join a private room unique to this user ID
+        // We use the prefix 'user:' to keep it clean
+        socket.join(`user:${userId}`);
+        console.log(`👤 User ${userId} connected and joined room: user:${userId}`);
+    }
+
     registerAuctionHandlers(io,socket)
+
+
+
     
 });
 
