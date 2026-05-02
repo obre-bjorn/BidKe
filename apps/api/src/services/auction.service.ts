@@ -127,7 +127,7 @@ export class AuctionService {
         return await db.$transaction(async (tx) => {
 
 
-            console.log(auctionId)
+           
             const [auction] = await tx.$queryRaw<any[]>`
                             SELECT a.*, 
                                     (SELECT "userId" FROM "Bid" 
@@ -139,7 +139,6 @@ export class AuctionService {
                             FOR UPDATE
                             `
 
-            console.log(auction)
 
             if (!auction) throw new Error("Auction not found");
             if (auction.status !== "ACTIVE") throw new Error("Auction is no longer active");
