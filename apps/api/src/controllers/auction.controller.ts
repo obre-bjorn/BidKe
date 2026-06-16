@@ -15,7 +15,16 @@ interface UploadedMedia {
 export async function getAllAuctions (req:Request, res:Response) {
     try {
 
-        const auctions = await AuctionService.getAllAuctions();
+        const { search, category, status, page, limit } = req.query;
+
+        const auctions = await AuctionService.getAllAuctions({ 
+            search: search as string,
+            category: category as string,
+            status: status as string,
+            page: page ? parseInt(page as string, 10) : undefined,
+            limit: limit ? parseInt(limit as string, 10) : undefined,
+        });
+
         res.json(auctions);
 
 

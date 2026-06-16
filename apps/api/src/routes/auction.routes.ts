@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createAuction, deleteAuction, getAllAuctions, getAuctionById} from "../controllers/auction.controller.js";
-import { authMiddleware,adminOnly } from "../middleware/auth.middlware.js";
+import { authMiddleware,adminOnly } from "../middleware/auth.middleware.js";
 import { upload } from "../middleware/upload.middlware.js";
 
 

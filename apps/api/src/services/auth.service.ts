@@ -26,7 +26,6 @@ export class AuthService {
         const user  = await db.user.findUnique({where:{email : email}})
 
 
-        console.log("User found:", user);
 
         if(!user || !await comparePasssword(pass, user.password)){
             throw new Error("Invalid credentials")

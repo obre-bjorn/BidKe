@@ -2,6 +2,14 @@ import redisClient from '../lib/redis.js';
 import { db } from "@auction/db";
 import { QueueService } from './queue.service.js';
 
+interface AuctionQueryParams {
+    search?: string;
+    category?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+}
+
 
 
 export class AuctionService {
@@ -42,20 +50,66 @@ export class AuctionService {
 
     }
 
-    static async getAllAuctions (){
+    static async getAllAuctions(params: AuctionQueryParams) {
+        const { 
+            search, 
+            category, 
+            status = 'ACTIVE', // Default to showing only active auctions
+            page = 1, 
+            limit = 12 // 12 items per page fits nicely into 2, 3, or 4-column grids
+        } = params;
 
+        const skip = (page - 1) * limit;
 
-        const result = await db.auction.findMany({
-            orderBy: {endTime: 'asc'},
-            include:{_count:{select: 
-                {bids : true}}
+        // Build dynamic Prisma query filters
+        const whereClause: any = {
+            status: status
+        };
+
+        // Add search filter if present (case-insensitive)
+        if (search) {
+            whereClause.OR = [
+                { title: { contains: search, mode: 'insensitive' } },
+                { description: { contains: search, mode: 'insensitive' } }
+            ];
+        }
+
+        // Add category filter if present
+        if (category) {
+            whereClause.category = category;
+        }
+
+        // Run count query and data query in parallel to speed things up
+        const [totalItems, auctions] = await db.$transaction([
+            db.auction.count({ where: whereClause }),
+            db.auction.findMany({
+                where: whereClause,
+                skip: skip,
+                take: limit,
+                orderBy: { endTime: 'asc' }, // Urgent auctions first
+                select: {
+                    id: true,
+                    title: true,
+                    currentPrice: true,
+                    endTime: true,
+                    category: true,
+                    media: true, // For showing the thumbnail image
+                    status: true
+                }
+            })
+        ]);
+
+        const totalPages = Math.ceil(totalItems / limit);
+
+        return {
+            auctions,
+            pagination: {
+                totalItems,
+                totalPages,
+                currentPage: page,
+                limit
             }
-        })
-
-        console.log("Fetched auctions:", result);
-
-        return result
-
+        };
     }
 
 
@@ -103,20 +157,21 @@ export class AuctionService {
     }
 
 
-    static async getLiveAuctionPrice(auctionId:string) : Promise<number> {
+    static async getLiveAuctionPrice(auctionId:string) : Promise<number | null> {
         
         const price = await redisClient.get(`auction:${auctionId}:currentPrice`);
+        if (price) return parseFloat(price);
 
-        if (price) {
-            return parseFloat(price);
-        }
+        // Fetch from DB if not in Redis
+        const auction = await db.auction.findUnique({ where: { id: auctionId } });
+        
+        // If auction is null, return null!
+        if (!auction) return null;
 
-        const auction = await db.auction.findUnique({where: { id: auctionId }})
-        const currentPrice = auction?.currentPrice || 0;
+        const currentPrice = auction.currentPrice;
+        await redisClient.set(`auction:${auctionId}:currentPrice`, currentPrice.toString());
 
-        await redisClient.set(`auction:${auctionId}:currentPrice`, currentPrice.toString())
-
-        return currentPrice
+        return currentPrice;
 
     } 
 
@@ -127,7 +182,7 @@ export class AuctionService {
         return await db.$transaction(async (tx) => {
 
 
-           
+        
             const [auction] = await tx.$queryRaw<any[]>`
                             SELECT a.*, 
                                     (SELECT "userId" FROM "Bid" 
@@ -141,6 +196,11 @@ export class AuctionService {
 
 
             if (!auction) throw new Error("Auction not found");
+
+            if (auction.sellerId === userId) {
+                throw new Error("You cannot bid on your own auction!");
+            }
+
             if (auction.status !== "ACTIVE") throw new Error("Auction is no longer active");
             if (amount <= auction.currentPrice) throw new Error("Bid must be higher than current price");
 
@@ -173,7 +233,7 @@ export class AuctionService {
         }, { timeout: 10000 });
     }
 
-    static async closeAuction(auctionId:string){{
+    static async closeAuction(auctionId:string){
 
         return await db.$transaction(async (tx) => {
 
@@ -215,8 +275,79 @@ export class AuctionService {
                 finalPrice: winningBid?.amount || null
             }
 
-        })
+        },{ timeout: 15000 , maxWait: 10000 })
 
-    }}
+    }
 
+
+    static async getUserDashboard(userId: string) {
+        // 1. Fetch auctions the user is SELLING
+        const listings = await db.auction.findMany({
+            where: { sellerId: userId },
+            orderBy: { createdAt: 'desc' },
+            include: {
+                _count: { select: { bids: true } }
+            }
+        });
+
+        // 2. Fetch auctions the user has BID ON (Buying)
+        // We get distinct auctions to avoid duplicates if they bid multiple times
+        const distinctBids = await db.bid.findMany({
+            where: { userId },
+            distinct: ['auctionId'],
+            include: {
+                auction: {
+                    include: {
+                        bids: {
+                            orderBy: { amount: 'desc' },
+                            take: 1 // Get the highest bid to check who is winning
+                        }
+                    }
+                }
+            }
+        });
+
+        // 3. Process the "Buying" data to determine standing (WINNING vs OUTBID)
+        const buying = distinctBids
+            .filter(b => b.auction.status === 'ACTIVE')
+            .map(b => {
+                const highestBid = b.auction.bids[0];
+                const isHighest = highestBid?.userId === userId;
+
+                return {
+                    id: b.auction.id,
+                    title: b.auction.title,
+                    currentPrice: b.auction.currentPrice,
+                    myLastBid: b.amount,
+                    endTime: b.auction.endTime,
+                    standing: isHighest ? 'WINNING' : 'OUTBID'
+                };
+            });
+
+        // 4. Process the "Won" data (Auctions that are SOLD where this user was the highest bidder)
+        const won = distinctBids
+            .filter(b => b.auction.status === 'SOLD')
+            .filter(b => b.auction.bids[0]?.userId === userId)
+            .map(b => ({
+                id: b.auction.id,
+                title: b.auction.title,
+                finalPrice: b.auction.currentPrice,
+                closedAt: b.auction.endTime
+            }));
+
+        return {
+            listings: listings.map(l => ({
+                id: l.id,
+                title: l.title,
+                currentPrice: l.currentPrice,
+                status: l.status,
+                endTime: l.endTime,
+                totalBids: l._count.bids
+            })),
+            buying,
+            won
+        };
+    }
 }
+
+

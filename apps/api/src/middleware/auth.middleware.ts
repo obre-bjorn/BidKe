@@ -28,9 +28,21 @@ export const  adminOnly = (req:Request, res:Response, next:NextFunction) => {
 
     const user = (req as any).user;
 
-    if(user.role !== 'ADMIN'){
+    if(user.role !== 'ADMIN' || user.role !== 'SUPERUSER'){
         return res.status(403).json({ message: 'Access denied' });
     }
 
     next();
 }   
+
+
+export const superUserOnly = (req:Request, res:Response, next:NextFunction) => {
+
+    const user = (req as any).user;
+
+    if(user.role !== 'SUPERUSER'){
+        return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    next();
+}

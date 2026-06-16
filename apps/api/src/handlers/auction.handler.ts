@@ -9,12 +9,22 @@ import redisClient from "../lib/redis.js";
 export const registerAuctionHandlers = (io: Server, socket: Socket) => {
 
     socket.on('joinAuction', async (auctionId: string) => {
-        console.log(`Client ${socket.id} joined auction ${auctionId}`);
+    
+        const livePrice = await AuctionService.getLiveAuctionPrice(auctionId);
+
+        console.log('livePrice:', livePrice);
+        
+        if (livePrice === null) {
+            return socket.emit('auction:error', { message: 'This auction does not exist.' });
+        }
+
         socket.join(auctionId);
 
-        // Optionally, send the current auction price to the newly joined client
-        const currentPrice = await AuctionService.getLiveAuctionPrice(auctionId);
-        socket.emit('currentPrice', { auctionId, currentPrice });
+    
+        socket.emit('auction:sync', {
+            auctionId,
+            currentPrice: livePrice
+        });
     });
 
     socket.on('leaveAuction', (auctionId: string) => {

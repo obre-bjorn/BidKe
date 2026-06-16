@@ -9,6 +9,7 @@ import { verifyToken } from './lib/auth.js';
 // Route imports
 import auctionRouters from './routes/auction.routes.js'
 import authRouters from './routes/auth.routes.js'
+import categoryRouters from './routes/category.routes.js'
 
 import { initializeWorker } from './services/queue.service.js';
 
@@ -42,7 +43,7 @@ app.get('/', (req: Request, res: Response) => {
 
 app.use('/auctions',auctionRouters)
 app.use('/auth',authRouters)
-
+app.use('/categories',categoryRouters)
 
 
 // SOCKET API
@@ -84,7 +85,7 @@ io.on('connection', (socket) => {
     
 });
 
-
+let workerInitialized = false
 
 
 // Ensure the queue worker is initialized
@@ -92,7 +93,10 @@ io.on('connection', (socket) => {
 const PORT = 4000;
 httpServer.listen(PORT, () => {
 
-    initializeWorker(io)
+    if (!workerInitialized) {
+        initializeWorker(io);
+        workerInitialized = true;
+    }
   console.log(`✅ [${APP_NAME}] Running on Node 25`);
   console.log(`🚀 API & Sockets: http://localhost:${PORT}`);
 });
